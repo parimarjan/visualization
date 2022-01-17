@@ -301,6 +301,8 @@ def init_datasets():
             dsqueries[ds].append(qfn)
             qpaths[qfn] = qpath
 
+        dsqueries[ds].sort()
+
     return datasets
 
 def get_node_label(G, node):
@@ -482,7 +484,13 @@ def update_query(attr, old, new):
     for node in G.nodes():
         splan_multiples[node] = 1.0
 
-    layout = nx.nx_pydot.pydot_layout(G , prog='dot')
+    # layout = nx.nx_pydot.pydot_layout(G , prog='dot')
+    layout_fn = qfn.replace("./queries", "./layouts")
+    assert os.path.exists(layout_fn)
+    with open(layout_fn, "rb") as f:
+        layout = pickle.load(f)
+    print("loaded layout!")
+
     ordered_nodes, nodes_coordinates = zip(*sorted(layout.items()))
     nodes_xs, nodes_ys = list(zip(*nodes_coordinates))
 
@@ -537,6 +545,7 @@ def update_color_bar():
 def update_dataset(attr, old, new):
     ds = dselector.value
     print("Update dataset ", ds)
+
     qselector.options = dsqueries[ds]
     qselector.value = qselector.options[0]
 
@@ -685,6 +694,8 @@ def update_plangraph_properties():
     cost_edges_source.data = get_edges_specs(G, layout)
     flow_edges_source.data = get_flow_specs(G, layout)
 
+info_width = 300
+
 p1_width = 1000
 p1_height = 600
 
@@ -705,9 +716,11 @@ show_flows = False
 
 datasets = init_datasets()
 
-dselector = Select(title="Dataset", value="Simple Examples", options=datasets)
-qselector = Select(title="Query", value="", options=[])
-cmselector = Select(title="Cost Model", value="", options=["C"])
+dselector = Select(title="Dataset", value="Simple Examples", options=datasets,
+        width=info_width)
+qselector = Select(title="Query", value="", options=[], width=info_width)
+cmselector = Select(title="Cost Model", value="", options=["C"],
+        width=info_width)
 
 dselector.on_change("value", update_dataset)
 qselector.on_change("value", update_query)
@@ -750,9 +763,9 @@ flow_edges_source = ColumnDataSource(dict(xs=[], ys=[],
 ## info text
 p2 = figure(title='',
         height=600,
-        width=300,
-        toolbar_location=None,
-        sizing_mode='scale_both')
+        width=info_width,
+        toolbar_location=None)
+
 p2.axis.visible = False
 p2.xgrid.grid_line_color = None
 p2.ygrid.grid_line_color = None
@@ -763,7 +776,8 @@ p2.outline_line_color = None
         # {'fontsize': '10pt', 'color': 'black', 'font-family': 'arial'})
 
 sqltext = Div(text="",
-        style={'font-size': '15pt', 'color': 'black'})
+        style={'font-size': '12pt', 'color': 'black'},
+        width=info_width)
 
 tab_info1 = Panel(child=sqltext, title="SQL")
 tab_info2 = Panel(child=p2, title="Join Graph")

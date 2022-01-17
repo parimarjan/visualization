@@ -1,5 +1,7 @@
 pandas
 numpy
 matplotlib
-pymc3
 bokeh
+networkx
+cvxpy
+sqlparse

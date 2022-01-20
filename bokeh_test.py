@@ -411,7 +411,7 @@ def get_flow_specs(_G, _layout):
     return d
 
 def get_edges_specs(_G, _layout):
-    d = dict(xs=[], ys=[], join=[], updated_cost=[])
+    d = dict(xs=[], ys=[], join=[], updated_cost=[], EdgeWidth=[])
 
     if cbox_cards_to_use.active == 0:
         cost_key = COST_MODEL + COST_KEY
@@ -423,6 +423,14 @@ def get_edges_specs(_G, _layout):
         d['ys'].append([_layout[u][1], _layout[v][1]])
         d["join"].append("Join")
         d["updated_cost"].append(data[cost_key])
+
+        # selecting width based on the estimated shortest path
+        if G.nodes()[u][COST_MODEL + COST_KEY + "-shortest_path"] \
+            and G.nodes()[v][COST_MODEL + COST_KEY + "-shortest_path"]:
+            d["EdgeWidth"].append(12.0)
+        else:
+            d["EdgeWidth"].append(3.0)
+
     return d
 
 def get_cost_palette():
@@ -489,7 +497,6 @@ def update_query(attr, old, new):
     assert os.path.exists(layout_fn)
     with open(layout_fn, "rb") as f:
         layout = pickle.load(f)
-    print("loaded layout!")
 
     ordered_nodes, nodes_coordinates = zip(*sorted(layout.items()))
     nodes_xs, nodes_ys = list(zip(*nodes_coordinates))
@@ -756,7 +763,7 @@ nodes_source = ColumnDataSource(dict(x=[], y=[],
                                 ))
 sel_source = ColumnDataSource(dict(x=[], y=[], NodeSize=[]))
 cost_edges_source = ColumnDataSource(dict(xs=[], ys=[], join=[],
-                        updated_cost=[]))
+                        updated_cost=[], EdgeWidth=[]))
 flow_edges_source = ColumnDataSource(dict(xs=[], ys=[],
                         flow=[]))
 
@@ -820,7 +827,8 @@ color_mapper = LinearColorMapper(palette=get_cost_palette(),
                                       low = min(cost_edges_source.data["updated_cost"]),
                                       high= max(cost_edges_source.data["updated_cost"]))
 
-cost_edges_lines = p1.multi_line('xs', 'ys', line_width=3.0,
+cost_edges_lines = p1.multi_line('xs', 'ys',
+                          line_width='EdgeWidth',
                           color={'field': "updated_cost", 'transform': color_mapper},
                           source=cost_edges_source)
 color_mapper2 = LinearColorMapper(palette=get_flow_palette(),

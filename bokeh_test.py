@@ -93,6 +93,7 @@ def update_query(attr, old, new):
             SEL_NODE_LABEL,nodedict
 
     curq = qselector.value
+    print("update query: ", curq)
 
     qfn = qpaths[curq]
     qrep = get_query(qfn)

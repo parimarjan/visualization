@@ -14,7 +14,10 @@ from bokeh.models import ColumnDataSource, Div, Select, Slider, TextInput,\
 from bokeh.events import Tap
 
 from utils import *
-import igraph as ig
+# import igraph as ig
+
+import grandalf
+from grandalf.layouts import SugiyamaLayout
 
 def get_qp_cost_palette():
     from bokeh.palettes import Reds256 as PAL
@@ -57,6 +60,7 @@ def plangraph_to_querygraph(G):
 
     # for u,v in G.edges():
     for u, v, data in G.edges(data=True):
+
         if G.nodes()[u][skey] and G.nodes()[v][skey]:
             all_aliases = list(u)
             left_aliases = list(set(u) - set(v))
@@ -72,8 +76,16 @@ def plangraph_to_querygraph(G):
             node1 = v
             node_new = u
 
+            # print("added edge: ", node_new, node0)
+            # print("added edge: ", node_new, node1)
+            # print("*******")
+
             plang.add_edge(node_new, node0)
             plang.add_edge(node_new, node1)
+            # print("added edge: ", node0, node_new)
+            # print("added edge: ", node1, node_new)
+            # plang.add_edge(node0, node_new)
+            # plang.add_edge(node1, node_new)
 
             plang.nodes()[node0]["aliases"] = left_aliases
             plang.nodes()[node1]["aliases"] = right_aliases
@@ -111,12 +123,7 @@ def update_qp_color_bar(data):
     costs = data["nodes_source"].data["Cost"]
     cms[0].update(low=min(costs), high=max(costs))
 
-
-def update_query_plan(data, G):
-
-    # pos_dot = nx.nx_pydot.pydot_layout(plang, prog="dot")
-
-    plang = plangraph_to_querygraph(G)
+def get_pos_igraph(plang):
     g2 = ig.Graph.Adjacency((nx.to_numpy_matrix(plang) > 0).tolist())
     layout = g2.layout("reingold_tilford")
     # print(layout)
@@ -124,7 +131,26 @@ def update_query_plan(data, G):
     pos = {}
     for i,(x,y) in enumerate(layout):
         pos[nodes[i]] = (x,-y)
+    return pos
 
+def get_pos_grandalf(plang):
+    g = grandalf.utils.convert_nextworkx_graph_to_grandalf(plang) # undocumented function
+    class defaultview(object):
+        w, h = 10, 10
+
+    for v in g.V(): v.view = defaultview()
+    sug = SugiyamaLayout(g.C[0])
+    sug.init_all()
+
+    sug.draw()     # Extracts the positions
+    pos = {v.data: (-v.view.xy[0], -v.view.xy[1]) for v in g.C[0].sV}
+    return pos
+
+def update_query_plan(data, G):
+    plang = plangraph_to_querygraph(G)
+    # pos_dot = nx.nx_pydot.pydot_layout(plang, prog="dot")
+    # pos = get_pos_igraph(plang)
+    pos = get_pos_grandalf(plang)
     ordered_nodes, nodes_coordinates = zip(*sorted(pos.items()))
     nodes_xs, nodes_ys = list(zip(*nodes_coordinates))
 
@@ -132,7 +158,7 @@ def update_query_plan(data, G):
     estsizes = []
     subplans = []
     labels = []
-    nodesizes = [60.0 for o in ordered_nodes]
+    nodesizes = [50.0 for o in ordered_nodes]
     xls = []
     yls = []
     costs = []

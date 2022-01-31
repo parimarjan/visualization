@@ -19,11 +19,14 @@ from utils import *
 import grandalf
 from grandalf.layouts import SugiyamaLayout
 
+MIN_PLAN_NODE_SIZE=50
+MAX_PLAN_NODE_SIZE=80
+
 def get_qp_cost_palette():
     from bokeh.palettes import Reds256 as PAL
     PAL = list(PAL)
     PAL.reverse()
-    PAL = PAL[18:]
+    PAL = PAL[18:-52]
     return PAL
 
 def get_qp_edges_specs(_G, _layout):
@@ -33,18 +36,13 @@ def get_qp_edges_specs(_G, _layout):
         d['ys'].append([_layout[u][1], _layout[v][1]])
     return d
 
-def plangraph_to_querygraph(G):
+def plangraph_to_querygraph(G, controldata):
     skey = COST_MODEL + COST_KEY + "-shortest_path"
     plang = nx.DiGraph()
+
     def _add_node_stats(node):
-
-        # truesizes.append(G.nodes()[n]["cardinality"]["actual"])
-        # estsizes.append(G.nodes()[n]["cardinality"]["curest"])
-        # subplans.append(G.nodes()[n]["Subplan"])
-
         plang.nodes()[node]["PlanRows"] = G.nodes()[node]["cardinality"]["curest"]
         plang.nodes()[node]["ActualRows"] = G.nodes()[node]["cardinality"]["actual"]
-
         plang.nodes()[node]["est_card"] = G.nodes()[node]["cardinality"]["curest"]
         plang.nodes()[node]["true_card"] = G.nodes()[node]["cardinality"]["actual"]
 
@@ -58,35 +56,22 @@ def plangraph_to_querygraph(G):
 
         plang.nodes()[node]["scan_type"] = ""
 
-    # for u,v in G.edges():
     for u, v, data in G.edges(data=True):
-
         if G.nodes()[u][skey] and G.nodes()[v][skey]:
             all_aliases = list(u)
             left_aliases = list(set(u) - set(v))
             right_aliases = list(v)
-
             all_aliases.sort()
             left_aliases.sort()
             right_aliases.sort()
             # make sure node names match the ones in G /plangraph
-
             node0 = tuple(left_aliases)
             assert node0 in G.nodes()
             node1 = v
             node_new = u
 
-            # print("added edge: ", node_new, node0)
-            # print("added edge: ", node_new, node1)
-            # print("*******")
-
             plang.add_edge(node_new, node0)
             plang.add_edge(node_new, node1)
-            # print("added edge: ", node0, node_new)
-            # print("added edge: ", node1, node_new)
-            # plang.add_edge(node0, node_new)
-            # plang.add_edge(node1, node_new)
-
             plang.nodes()[node0]["aliases"] = left_aliases
             plang.nodes()[node1]["aliases"] = right_aliases
             plang.nodes()[node_new]["aliases"] = all_aliases
@@ -97,14 +82,10 @@ def plangraph_to_querygraph(G):
 
             # cost of each node
             ## TODO: use button
-            # if cbox_cards_to_use.active == 0:
-                # cost_key = COST_MODEL + COST_KEY
-            # elif cbox_cards_to_use.active == 1:
-                # cost_key = COST_MODEL + TRUE_COST_KEY
-
-            # cost_key = COST_MODEL + COST_KEY
-            cost_key = COST_MODEL + TRUE_COST_KEY
-
+            if controldata["cbox_cards_to_use"].active == 0:
+                cost_key = COST_MODEL + COST_KEY
+            elif controldata["cbox_cards_to_use"].active == 1:
+                cost_key = COST_MODEL + TRUE_COST_KEY
             plang.nodes()[node_new]["cur_cost"] = data[cost_key]
 
             if len(node0) == 1:
@@ -146,8 +127,9 @@ def get_pos_grandalf(plang):
     pos = {v.data: (-v.view.xy[0], -v.view.xy[1]) for v in g.C[0].sV}
     return pos
 
-def update_query_plan(data, G):
-    plang = plangraph_to_querygraph(G)
+def update_query_plan(data, G, controldata):
+    plang = plangraph_to_querygraph(G, controldata)
+
     # pos_dot = nx.nx_pydot.pydot_layout(plang, prog="dot")
     # pos = get_pos_igraph(plang)
     pos = get_pos_grandalf(plang)
@@ -158,7 +140,8 @@ def update_query_plan(data, G):
     estsizes = []
     subplans = []
     labels = []
-    nodesizes = [50.0 for o in ordered_nodes]
+
+    # nodesizes = []
     xls = []
     yls = []
     costs = []
@@ -169,16 +152,20 @@ def update_query_plan(data, G):
         truesizes.append(G.nodes()[n]["cardinality"]["actual"])
         estsizes.append(G.nodes()[n]["cardinality"]["curest"])
         subplans.append(G.nodes()[n]["Subplan"])
-        labels.append(plang.nodes()[n]["node_label"])
-        # if len(n) == 1:
-            # labels.append(G.nodes()[n]["Subplan"])
-        # else:
-            # # nested loop join
-            # labels.append("N")
 
-        xls.append(nodes_xs[ni]-0.02)
-        yls.append(nodes_ys[ni]-0.02)
+        labels.append(plang.nodes()[n]["node_label"])
         costs.append(plang.nodes()[n]["cur_cost"])
+
+        if len(n) == 1:
+            xls.append(nodes_xs[ni]-0.5)
+            yls.append(nodes_ys[ni]-2.0)
+        else:
+            xls.append(nodes_xs[ni]-0.5)
+            yls.append(nodes_ys[ni]-1.0)
+
+    nodesizes = get_node_sizes(estsizes, MIN_PLAN_NODE_SIZE,
+            MAX_PLAN_NODE_SIZE)
+
 
     data["nodes_source"].data = dict(x=nodes_xs, y=nodes_ys, nodes=ordered_nodes,
                                     xl=xls,
@@ -217,6 +204,13 @@ def init_cost_model_query_plan(G):
                                     ))
     edges_source = ColumnDataSource(dict(xs=[], ys=[]))
 
+    edges = p.multi_line('xs', 'ys',
+                        line_width=4.0,
+                        color = "black",
+                        alpha = 1.0,
+                        source=edges_source,
+                        level="underlay")
+
     color_mapper = LinearColorMapper(palette=get_qp_cost_palette(),
                                           low = 1,
                                           high= 1e6)
@@ -229,18 +223,17 @@ def init_cost_model_query_plan(G):
                           # alpha="Alphas",
                           # color = "blue",
                           color={'field': "Cost", 'transform': color_mapper},
-                          alpha = 0.5,
+                          alpha = 1.0,
                           line_alpha = 1.0,
-                          level='overlay')
+                          level='underlay')
 
     labels = LabelSet(x='xl', y='yl', text='Label', source=nodes_source,
-                  background_fill_color='white')
+                  background_fill_color='white', background_fill_alpha=0,
+                  text_font_size="14pt", text_font_style="bold",
+                  level="annotation"
+                  )
     p.renderers.append(labels)
 
-    edges = p.multi_line('xs', 'ys',
-                        line_width=1.0,
-                        color = "black",
-                        source=edges_source)
 
     node_hov = HoverTool(tooltips=[("Subplan", "@Subplan"), ("True Size", "@TrueSize"),
                                ("Estimated Size", "@EstimatedSize")

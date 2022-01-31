@@ -37,11 +37,29 @@ QUERY_DIR = "./queries/"
 
 MIN_RADIUS = 20.0
 MAX_RADIUS = 50.0
+NODE_WIDTH = 3.0
+
+def get_node_sizes(ests, min_size, max_size):
+    new_range = max_size-min_size
+    old_range = max(ests) - min(ests)
+    sizes = []
+    for ni,est in enumerate(ests):
+        #NewValue = (((OldValue - OldMin) * NewRange) / OldRange) + NewMin
+        size = (((ests[ni] - min(ests)) * new_range) / old_range) + min_size
+        sizes.append(size)
+
+    return sizes
+
 
 def get_flows(subsetg, cost_key):
     # TODO: add options for changing beta; look at old code
     # FIXME: assuming subsetg  is S->D; construct_lp expects it to be D->S.
+
     edges, costs, A, b, G, h = construct_lp(subsetg, cost_key=cost_key)
+    return np.zeros(len(subsetg.edges)), edges
+    if len(subsetg.edges) > 5000:
+        return np.zeros(len(subsetg.edges)), edges
+
     n = len(edges)
     P = np.zeros((len(edges),len(edges)))
     for i,c in enumerate(costs):
@@ -54,7 +72,7 @@ def get_flows(subsetg, cost_key):
     #                  A @ x == b])
     prob = cp.Problem(cp.Minimize((1/2)*cp.quad_form(x, P) + q.T @ x),
                      [A @ x == b])
-    prob.solve(verbose=False)
+    prob.solve(verbose=False, solver=cp.OSQP)
     flows = np.array(x.value)
 
     return flows, edges

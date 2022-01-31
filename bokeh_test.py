@@ -76,7 +76,7 @@ def calc_sel_data():
 
 def update():
     G = update_plangraph_properties()
-    update_query_plan(qp_data, G)
+    update_query_plan(qp_data, G, controldata)
 
 def update_node_highlight(event):
     nodes_clicked_ints = nodes_source.selected.indices
@@ -183,10 +183,25 @@ def update_selected(attr, old, new):
     if SEL_NODE_LABEL == "":
         return
 
-    calc_sel_data()
+    # calc_sel_data()
 
     # TODO: update the slider based on it too
     sel_node = labels_to_nodes[SEL_NODE_LABEL]
+
+    newcols = []
+    newwidths = []
+
+    for node in ordered_nodes:
+        if node == sel_node:
+            newcols.append("blue")
+            newwidths.append(6.0)
+        else:
+            newcols.append("black")
+            newwidths.append(NODE_WIDTH)
+
+    nodes_source.data["LineColor"] = newcols
+    nodes_source.data["LineWidth"] = newwidths
+
     assert sel_node in splan_multiples
     size_slider.value = splan_multiples[sel_node]
 
@@ -237,7 +252,6 @@ def update_edges(new):
 
     if len(new) == 0:
         plain_edges_lines.visible = True
-
 
 def update_slider(attr, old, new):
     global splan_multiples
@@ -302,6 +316,16 @@ def update_plangraph_properties():
     sizes = get_node_sizes(ests, MIN_RADIUS, MAX_RADIUS)
     curG = get_shortest_path(curG, COST_MODEL, y, COST_KEY)
 
+    outwidths = []
+    outlinecols = []
+
+    SEL_NODE_LABEL = nodeselector.value
+
+    if SEL_NODE_LABEL != "" and SEL_NODE_LABEL in labels_to_nodes:
+        sel_node = labels_to_nodes[SEL_NODE_LABEL]
+    else:
+        sel_node = ""
+
     for ni, node in enumerate(ordered_nodes):
         if curG.nodes()[node][COST_MODEL + COST_KEY + "-shortest_path"]:
             node_colors.append("lightgreen")
@@ -310,13 +334,23 @@ def update_plangraph_properties():
             node_colors.append("grey")
             alphas.append(1.0)
 
+        if node == sel_node:
+            outwidths.append(6.0)
+            outlinecols.append("blue")
+        else:
+            outwidths.append(NODE_WIDTH)
+            outlinecols.append("black")
+
         # curG.nodes()[node]["NodeSize"] = sizes[ni]
+        # curG.nodes()[node]["CurEst"] = ests[ni]
 
     # this is responsible for updating the displayed plangraph graph
     nodes_source.data = dict(x=nodes_xs, y=nodes_ys, nodes=ordered_nodes,
                                     Subplan=nodedict["Subplan"],
                                     TrueSize=nodedict["TrueSize"],
                                     EstimatedSize=ests,
+                                    LineWidth=outwidths,
+                                    LineColor=outlinecols,
                                     NodeColor=node_colors,
                                     NodeSize=sizes,
                                     Alphas = alphas,
@@ -361,12 +395,14 @@ cbox_cards_to_use = RadioButtonGroup(labels=cbox2_labels,
         active=0,
         width=200)
 cbox_cards_to_use.on_click(update_cards_to_use)
+controldata = {}
+controldata["cbox_cards_to_use"] = cbox_cards_to_use
 
 use_postgres_ests = False
 use_true_ests = True
 reset_card_button = Button(label="Reset all to true sizes",
     button_type="success")
-reset_pg_button = Button(label="Reset all to PostgreSQL estimates",
+reset_pg_button = Button(label="Reset all to PostgreSQL sizes",
     button_type="success")
 
 reset_card_button.on_click(update_reset_true)
@@ -377,6 +413,7 @@ nodes_source = ColumnDataSource(dict(x=[], y=[],
                                 Subplan=[],
                                 TrueSize=[],
                                 EstimatedSize=[],
+                                LineWidth=[], LineColor=[],
                                 NodeColor=[], NodeSize=[], Alphas=[],
                                 ))
 sel_source = ColumnDataSource(dict(x=[], y=[], NodeSize=[]))
@@ -431,8 +468,8 @@ qp_data = init_cost_model_query_plan(G)
 update_dataset(None, None, None)
 
 r_circles = p1.circle('x', 'y', source=nodes_source,
-                      line_color = "black",
-                      line_width = 4.0,
+                      line_color = "LineColor",
+                      line_width = "LineWidth",
                       size='NodeSize',
                       color = "NodeColor",
                       alpha="Alphas",
@@ -509,7 +546,6 @@ update_selected(None,None,None)
 dummy = RadioButtonGroup(labels=[])
 
 tab1 = Panel(child=p1, title="Plan Graph")
-
 
 tab2 = Panel(child=qp_data["figure"], title="Query Plan")
 tabs = Tabs(tabs=[tab1, tab2])

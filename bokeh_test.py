@@ -37,7 +37,7 @@ def get_flow_specs(_G, _layout):
     return d
 
 def get_edges_specs(_G, _layout):
-    d = dict(xs=[], ys=[], join=[], updated_cost=[], EdgeWidth=[],
+    d = dict(xs=[], ys=[], updated_cost=[], EdgeWidth=[],
             TrueCost=[],EstCost=[],TrueFlow=[],EstFlow=[],
             Join=[]
             )
@@ -55,7 +55,7 @@ def get_edges_specs(_G, _layout):
     for u, v, data in _G.edges(data=True):
         d['xs'].append([_layout[u][0], _layout[v][0]])
         d['ys'].append([_layout[u][1], _layout[v][1]])
-        d["join"].append("Join")
+        # d["join"].append("Join")
         d["updated_cost"].append(data[cost_key])
         d["TrueCost"].append(millify(data[tckey]))
         d["EstCost"].append(millify(data[eckey]))
@@ -118,6 +118,16 @@ def update_query(attr, old, new):
     joing = qrep["join_graph"]
     if SOURCE_NODE in G.nodes():
         G.remove_node(SOURCE_NODE)
+
+    # for u,v, data in joing.edges(data=True):
+        # print(data)
+
+    # TODO: add join conditions
+    # for u,v, data in G.edges(data=True):
+        # joinstrs = []
+        # node1 = set(u) - set(v)
+
+        # print(data)
 
     for node in G.nodes():
         splan_multiples[node] = 1.0
@@ -445,8 +455,9 @@ flow_edges_source = ColumnDataSource(dict(xs=[], ys=[],
 
 
 sqltext = Div(text="",
-        style={'font-size': '12pt', 'color': 'black'},
+        style={'font-size': '10pt', 'color': 'black'},
         width=info_width)
+
 joing_data = init_joingraph()
 
 tab_info1 = Panel(child=sqltext, title="SQL")

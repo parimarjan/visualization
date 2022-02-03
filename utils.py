@@ -9,6 +9,10 @@ import pickle
 from networkx.readwrite import json_graph
 from networkx.classes.function import path_weight
 
+# info_width = 200
+# p1_width = 1000
+# p1_height = 600
+
 info_width = 200
 p1_width = 1000
 p1_height = 600

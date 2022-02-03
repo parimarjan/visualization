@@ -28,6 +28,39 @@ Costs using true sizes:
     Optimal Plan: {OptPlan}
 """
 
+KEY_COLOR = "#66ccff"
+QueryPlanNodeToolTip = """
+    <div>
+        <div>
+            <span style="font-size: 10px; color: {KEYCOLOR}">
+            &nbsp; Join: </span>
+            <span style="font-size: 10px; font-weight: bold">
+            @Join <br> </span>
+
+            <span style="font-size: 10px; color: {KEYCOLOR}">
+            True Cost: </span>
+            <span style="font-size: 10px;">
+            @TrueCost <br> </span>
+
+            <span style="font-size: 10px; color: {KEYCOLOR}">
+            &nbsp; Est Cost: </span>
+            <span style="font-size: 10px;">
+            @EstCost <br> </span>
+
+            <span style="font-size: 10px; color: {KEYCOLOR}">
+            True Size: </span>
+            <span style="font-size: 10px;">
+            @TrueSize <br> </span>
+
+            <span style="font-size: 10px; color: {KEYCOLOR}">
+            &nbsp; Est Size: </span>
+            <span style="font-size: 10px;">
+            @EstimatedSize <br> </span>
+
+        </div>
+    </div>
+""".format(KEYCOLOR=KEY_COLOR)
+
 def get_qp_cost_palette():
     from bokeh.palettes import Reds256 as PAL
     PAL = list(PAL)
@@ -65,6 +98,9 @@ def plangraph_to_querygraph(G, controldata):
 
     for u, v, data in G.edges(data=True):
         if G.nodes()[u][skey] and G.nodes()[v][skey]:
+            # d["Join"].append(get_join_disp(u,v))
+            joinstr = get_join_disp(u,v)
+
             all_aliases = list(u)
             left_aliases = list(set(u) - set(v))
             right_aliases = list(v)
@@ -81,7 +117,9 @@ def plangraph_to_querygraph(G, controldata):
             plang.add_edge(node_new, node1)
             plang.nodes()[node0]["aliases"] = left_aliases
             plang.nodes()[node1]["aliases"] = right_aliases
+
             plang.nodes()[node_new]["aliases"] = all_aliases
+            plang.nodes()[node_new]["Join"] = joinstr
 
             _add_node_stats(node0)
             _add_node_stats(node1)
@@ -102,9 +140,11 @@ def plangraph_to_querygraph(G, controldata):
             if len(node0) == 1:
                 plang.nodes()[node0]["cur_cost"] = 1.0
                 plang.nodes()[node0]["true_cost"] = 1.0
+                plang.nodes()[node0]["Join"] = left_aliases[0]
             if len(node1) == 1:
                 plang.nodes()[node1]["cur_cost"] = 1.0
                 plang.nodes()[node1]["true_cost"] = 1.0
+                plang.nodes()[node1]["Join"] = right_aliases[0]
 
     return plang
 
@@ -158,10 +198,12 @@ def update_query_plan(data, G, controldata):
     xls = []
     yls = []
     costs = []
+    tcosts = []
 
     truecost = 0.0
 
     # TODO: don't use G.nodes() here
+    joins = []
 
     for ni, n in enumerate(ordered_nodes):
         truesizes.append(G.nodes()[n]["cardinality"]["actual"])
@@ -170,6 +212,8 @@ def update_query_plan(data, G, controldata):
 
         labels.append(plang.nodes()[n]["node_label"])
         costs.append(plang.nodes()[n]["cur_cost"])
+
+        tcosts.append(plang.nodes()[n]["true_cost"])
         truecost += plang.nodes()[n]["true_cost"]
 
         if len(n) == 1:
@@ -179,18 +223,28 @@ def update_query_plan(data, G, controldata):
             xls.append(nodes_xs[ni]-0.5)
             yls.append(nodes_ys[ni]-1.0)
 
+        joins.append(plang.nodes()[n]["Join"])
+
     nodesizes = get_node_sizes(estsizes, MIN_PLAN_NODE_SIZE,
             MAX_PLAN_NODE_SIZE)
 
+    estsizes2 = [millify(e) for e in estsizes]
+    tsizes2 = [millify(t) for t in truesizes]
+
+    estcosts2 = [millify(c) for c in costs]
+    tcosts2 = [millify(c) for c in tcosts]
 
     data["nodes_source"].data = dict(x=nodes_xs, y=nodes_ys, nodes=ordered_nodes,
                                     xl=xls,
                                     yl=yls,
                                     Cost = costs,
+                                    EstCost = estcosts2,
+                                    TrueCost = tcosts2,
                                     Subplan=subplans,
-                                    TrueSize=truesizes,
-                                    EstimatedSize=estsizes,
+                                    TrueSize=tsizes2,
+                                    EstimatedSize=estsizes2,
                                     Label=labels,
+                                    Join=joins,
                                     # NodeColor=node_colors,
                                     NodeSize=nodesizes,
                                     # Alphas = alphas,
@@ -215,6 +269,8 @@ def init_cost_model_query_plan(G):
                                     Subplan=[],
                                     Cost=[],
                                     Label=[],
+                                    Join=[],
+                                    Tables=[],
                                     TrueSize=[],
                                     EstimatedSize=[],
                                     # NodeColor=[],
@@ -253,12 +309,16 @@ def init_cost_model_query_plan(G):
     p.renderers.append(labels)
 
 
-    node_hov = HoverTool(tooltips=[("Subplan", "@Subplan"), ("True Size", "@TrueSize"),
-                               ("Estimated Size", "@EstimatedSize")
-                               ],
+    # node_hov = HoverTool(tooltips=[("Subplan", "@Subplan"), ("True Size", "@TrueSize"),
+                               # ("Estimated Size", "@EstimatedSize")
+                               # ],
+                               # renderers=[nodes], anchor="center",
+                               # attachment="above",
+                               # )
+
+    node_hov = HoverTool(tooltips=QueryPlanNodeToolTip,
                                renderers=[nodes], anchor="center",
-                               attachment="above",
-                               )
+                               attachment="above")
     p.add_tools(node_hov)
 
     color_bar = ColorBar(color_mapper=color_mapper, ticker= BasicTicker(),

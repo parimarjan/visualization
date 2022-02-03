@@ -19,8 +19,25 @@ from utils import *
 import grandalf
 from grandalf.layouts import SugiyamaLayout
 
-MIN_PLAN_NODE_SIZE=50
-MAX_PLAN_NODE_SIZE=80
+# MIN_PLAN_NODE_SIZE=50
+# MAX_PLAN_NODE_SIZE=80
+
+KEY_COLOR = "#66ccff"
+JoinGraphNodeToolTip = """
+    <div>
+        <div>
+            <span style="font-size: 10px; color: {KEYCOLOR}">
+            &nbsp; Table: </span>
+            <span style="font-size: 10px;">
+            @Table <br> </span>
+
+            <span style="font-size: 10px; color: {KEYCOLOR}">
+            Filter: </span>
+            <span style="font-size: 10px;">
+            @Filter <br> </span>
+        </div>
+    </div>
+""".format(KEYCOLOR=KEY_COLOR)
 
 def get_qp_cost_palette():
     from bokeh.palettes import Reds256 as PAL
@@ -37,47 +54,69 @@ def get_join_edges_specs(_G, _layout):
     return d
 
 def update_joingraph(data, joingraph, controldata):
-    print("update joingraph")
-
-    pos = nx.spring_layout(joingraph, scale=0.05)
+    pos = nx.spring_layout(joingraph, scale=0.60)
     ordered_nodes, nodes_coordinates = zip(*sorted(pos.items()))
     nodes_xs, nodes_ys = list(zip(*nodes_coordinates))
 
     labels = []
     nodesizes = []
-    # xls = []
-    # yls = []
+    xls = []
+    yls = []
 
     # TODO: don't use G.nodes() here
+    labels = []
+    filters = []
+    tables = []
+    aliases = []
 
     for ni, n in enumerate(ordered_nodes):
         nodesizes.append(50.0)
-        labels.append("t")
+        tfmt = "{TAB} as {ALIAS}"
+        labels.append(n)
+        tables.append(tfmt.format(TAB=joingraph.nodes()[n]["real_name"],
+                                  ALIAS=n))
+        # aliases.append(n)
+        pred_str = ""
+        if len(joingraph.nodes()[n]["predicates"]) > 0:
+            pred_str = " AND ".join(joingraph.nodes()[n]["predicates"])
+        filters.append(pred_str)
+
+        # xls.append(nodes_xs[ni])
+        # yls.append(nodes_ys[ni])
+        xls.append(nodes_xs[ni]-0.05)
+        yls.append(nodes_ys[ni]-0.02)
 
     # nodesizes = get_node_sizes(estsizes, MIN_PLAN_NODE_SIZE,
             # MAX_PLAN_NODE_SIZE)
 
+    data["edges_source"].data = get_join_edges_specs(joingraph, pos)
     data["nodes_source"].data = dict(x=nodes_xs, y=nodes_ys, nodes=ordered_nodes,
-                                    # xl=xls,
-                                    # yl=yls,
+                                    xl=xls,
+                                    yl=yls,
                                     Label=labels,
+                                    Table=tables,
+                                    Filter=filters,
+                                    # Alias=aliases,
                                     # NodeColor=node_colors,
                                     NodeSize=nodesizes,
                                     # Alphas = alphas,
                                     )
-    data["edges_source"].data = get_join_edges_specs(joingraph, pos)
 
 def init_joingraph():
     data = {}
-
+    HEIGHT=600
     p = figure(title='',
-            height=600,
+            height=HEIGHT,
             width=info_width,
-            tools="pan,wheel_zoom,save,reset",
+            x_range=(-1,1),
+            y_range=(-1,1),
+            # tools="pan,wheel_zoom,save,reset",
+            tools="wheel_zoom,save,reset",
             active_scroll='wheel_zoom',
             # toolbar_location=None,
             sizing_mode='scale_both')
 
+    edges_source = ColumnDataSource(dict(xs=[], ys=[]))
     nodes_source = ColumnDataSource(dict(x=[], y=[], xl=[], yl=[],
                                     nodes=[],
                                     Label=[],
@@ -87,12 +126,11 @@ def init_joingraph():
                                     # NodeColor=[],
                                     NodeSize=[],
                                     ))
-    edges_source = ColumnDataSource(dict(xs=[], ys=[]))
 
     edges = p.multi_line('xs', 'ys',
                         line_width=4.0,
                         color = "black",
-                        alpha = 0.5,
+                        alpha = 1.0,
                         source=edges_source,
                         level="underlay")
 
@@ -100,23 +138,26 @@ def init_joingraph():
                           size='NodeSize',
                           line_width=4.0,
                           line_color="black",
-                          color = "black",
+                          color = "white",
                           alpha = 1.0,
                           line_alpha = 1.0,
                           level='underlay')
 
-    # labels = LabelSet(x='xl', y='yl', text='Label', source=nodes_source,
-                  # background_fill_color='white', background_fill_alpha=0,
-                  # text_font_size="14pt", text_font_style="bold",
-                  # level="annotation"
-                  # )
-    # p.renderers.append(labels)
+    labels = LabelSet(x='xl', y='yl', text='Label', source=nodes_source,
+                  background_fill_color='white', background_fill_alpha=0,
+                  text_font_size="14pt", text_font_style="bold",
+                  level="annotation"
+                  )
+    p.renderers.append(labels)
 
-    node_hov = HoverTool(tooltips=[("Table", "@Table"),
-                               ],
+    # node_hov = HoverTool(tooltips=[("Table", "@Table"),
+                               # ],
+                               # renderers=[nodes], anchor="center",
+                               # attachment="above",
+                               # )
+    node_hov = HoverTool(tooltips=JoinGraphNodeToolTip,
                                renderers=[nodes], anchor="center",
-                               attachment="above",
-                               )
+                               attachment="above")
     p.add_tools(node_hov)
 
     # color_bar = ColorBar(color_mapper=color_mapper, ticker= BasicTicker(),

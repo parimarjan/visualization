@@ -70,7 +70,8 @@ def get_flows(subsetg, cost_key):
     # FIXME: assuming subsetg  is S->D; construct_lp expects it to be D->S.
 
     edges, costs, A, b, G, h = construct_lp(subsetg, cost_key=cost_key)
-    return np.zeros(len(subsetg.edges)), edges
+    # return np.zeros(len(subsetg.edges)), edges
+
     if len(subsetg.edges) > 5000:
         return np.zeros(len(subsetg.edges)), edges
 

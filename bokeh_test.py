@@ -204,6 +204,8 @@ def init_selected():
     for node in ordered_nodes:
         selectoroptions.append(get_node_label(G, node))
 
+    selectoroptions.sort(key=len, reverse=True)
+
     nodeselector.options = selectoroptions
 
 def update_selected(attr, old, new):

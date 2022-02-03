@@ -7,9 +7,9 @@ import cvxpy as cp
 import sqlparse
 import pickle
 from networkx.readwrite import json_graph
+from networkx.classes.function import path_weight
 
-
-info_width = 300
+info_width = 200
 p1_width = 1000
 p1_height = 600
 
@@ -39,6 +39,7 @@ MIN_RADIUS = 20.0
 MAX_RADIUS = 50.0
 NODE_WIDTH = 3.0
 
+
 def get_node_sizes(ests, min_size, max_size):
     new_range = max_size-min_size
     old_range = max(ests) - min(ests)
@@ -50,6 +51,15 @@ def get_node_sizes(ests, min_size, max_size):
 
     return sizes
 
+import math
+
+millnames = ['',' Thousand',' Million',' Billion',' Trillion']
+
+def millify(n):
+    n = float(n)
+    millidx = max(0,min(len(millnames)-1,
+                        int(math.floor(0 if n == 0 else math.log10(abs(n))/3))))
+    return '{:.2f}{}'.format(n / 10**(3 * millidx), millnames[millidx])
 
 def get_flows(subsetg, cost_key):
     # TODO: add options for changing beta; look at old code
@@ -262,7 +272,7 @@ def get_costs(subset_graph, card1, card2, card3, node1, node2,
 
     return cost, edges_kind
 
-def add_single_node_edges(subset_graph, source=None):
+def add_single_node_edges(subset_graph, source=None, costkey="cost"):
     global SOURCE_NODE
     if source is None:
         source = tuple("s")
@@ -284,6 +294,7 @@ def add_single_node_edges(subset_graph, source=None):
 
         # print("going to add edge from source to node: ", node)
         subset_graph.add_edge(node, source, cost=0.0)
+        subset_graph.edges()[(node,source)][costkey] = 0.0
         in_edges = subset_graph.in_edges(node)
         out_edges = subset_graph.out_edges(node)
         # print("in edges: ", in_edges)
@@ -313,7 +324,7 @@ def update_costs(subsetg, cost_model, y, cost_key):
 
 def get_shortest_path(subsetg, cost_model, y, cost_key):
     update_costs(subsetg, cost_model, y, cost_key)
-    add_single_node_edges(subsetg, SOURCE_NODE)
+    add_single_node_edges(subsetg, SOURCE_NODE, costkey=cost_model+cost_key)
 
     nodes = list(subsetg.nodes())
     nodes.sort(key=lambda x: len(x))
@@ -323,21 +334,40 @@ def get_shortest_path(subsetg, cost_model, y, cost_key):
     subsetg = subsetg.reverse()
     opt_labels_list = nx.shortest_path(subsetg, SOURCE_NODE,
             final_node, weight=cost_model+cost_key)
+    pathcost = path_weight(subsetg, opt_labels_list, weight=cost_model+cost_key)
 
     for node in subsetg.nodes():
         if node in opt_labels_list:
             subsetg.nodes()[node][cost_model+cost_key+"-shortest_path"] = 1
         else:
             subsetg.nodes()[node][cost_model+cost_key+"-shortest_path"] = 0
-    # TODO: store this as a node property
+
+    if cost_key == TRUE_COST_KEY:
+        subsetg.graph["opt_pathcost"] = pathcost
 
     subsetg = subsetg.reverse()
     subsetg.remove_node(SOURCE_NODE)
 
     return subsetg
 
+JOIN_SYMBOL = " &#8904; "
+def get_subplan_display(G, node):
+    subplan = JOIN_SYMBOL.join(node)
+    return subplan
+
+JOIN_FMT = "({u}) {J} {v}"
+def get_join_disp(u, v):
+    v = set(u) - set(v)
+    v = JOIN_SYMBOL.join(v)
+    u = JOIN_SYMBOL.join(u)
+
+    join = JOIN_FMT.format(u = u,
+                           J = JOIN_SYMBOL,
+                           v = v)
+    return join
+
 def get_node_label(G, node):
-    return str(node)
+    return ",".join(node)
 
 def add_node_labels(G):
     for node in G.nodes():
@@ -352,15 +382,15 @@ def get_query(qfn):
 
 def init_datasets():
     # global dsqueries,qpaths
-    # datasets = ["Simple Examples", "Join Order Benchmark", "Join Order Benchmark-M", "CEB (imdb)"]
-    datasets = ["Simple Examples", "Join Order Benchmark", "Join Order Benchmark-M"]
+    datasets = ["Simple Examples", "Join Order Benchmark", "CEB (imdb)",  "Join Order Benchmark-M"]
+    # datasets = ["Simple Examples", "Join Order Benchmark", "Join Order Benchmark-M"]
     dsqueries = {}
     qpaths = {}
 
     dspaths = {}
     dspaths["Join Order Benchmark"] = os.path.join(os.path.join(QUERY_DIR, "job"), "all_job")
     dspaths["Join Order Benchmark-M"] = os.path.join(os.path.join(QUERY_DIR, "jobm"), "all_jobm")
-    # dspaths["CEB (imdb)"] = os.path.join(QUERY_DIR, "ceb-imdb")
+    dspaths["CEB (imdb)"] = os.path.join(QUERY_DIR, "ceb-sample")
     dspaths["Simple Examples"] = os.path.join(QUERY_DIR, "debug_sqls")
 
     # initialize queries

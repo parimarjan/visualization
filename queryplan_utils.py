@@ -10,7 +10,7 @@ from bokeh.models import CheckboxButtonGroup, RadioButtonGroup, CheckboxGroup
 from bokeh.models import Panel, Tabs
 from bokeh.layouts import column, row
 from bokeh.models import ColumnDataSource, Div, Select, Slider, TextInput,\
-    Button,TapTool,ActionTool,LabelSet
+    Button,TapTool,ActionTool,LabelSet,Label
 from bokeh.events import Tap
 
 from utils import *
@@ -19,8 +19,14 @@ from utils import *
 import grandalf
 from grandalf.layouts import SugiyamaLayout
 
-MIN_PLAN_NODE_SIZE=50
+MIN_PLAN_NODE_SIZE=40
 MAX_PLAN_NODE_SIZE=80
+
+PLAN_COST_FMT = """
+Costs using true sizes:
+    Current Plan: {CPlan}
+    Optimal Plan: {OptPlan}
+"""
 
 def get_qp_cost_palette():
     from bokeh.palettes import Reds256 as PAL
@@ -39,6 +45,7 @@ def get_qp_edges_specs(_G, _layout):
 def plangraph_to_querygraph(G, controldata):
     skey = COST_MODEL + COST_KEY + "-shortest_path"
     plang = nx.DiGraph()
+    plang.graph["opt_pathcost"] = G.graph["opt_pathcost"]
 
     def _add_node_stats(node):
         plang.nodes()[node]["PlanRows"] = G.nodes()[node]["cardinality"]["curest"]
@@ -82,16 +89,22 @@ def plangraph_to_querygraph(G, controldata):
 
             # cost of each node
             ## TODO: use button
+
+            tckey = COST_MODEL + TRUE_COST_KEY
             if controldata["cbox_cards_to_use"].active == 0:
                 cost_key = COST_MODEL + COST_KEY
             elif controldata["cbox_cards_to_use"].active == 1:
                 cost_key = COST_MODEL + TRUE_COST_KEY
+
             plang.nodes()[node_new]["cur_cost"] = data[cost_key]
+            plang.nodes()[node_new]["true_cost"] = data[tckey]
 
             if len(node0) == 1:
                 plang.nodes()[node0]["cur_cost"] = 1.0
+                plang.nodes()[node0]["true_cost"] = 1.0
             if len(node1) == 1:
                 plang.nodes()[node1]["cur_cost"] = 1.0
+                plang.nodes()[node1]["true_cost"] = 1.0
 
     return plang
 
@@ -146,6 +159,8 @@ def update_query_plan(data, G, controldata):
     yls = []
     costs = []
 
+    truecost = 0.0
+
     # TODO: don't use G.nodes() here
 
     for ni, n in enumerate(ordered_nodes):
@@ -155,6 +170,7 @@ def update_query_plan(data, G, controldata):
 
         labels.append(plang.nodes()[n]["node_label"])
         costs.append(plang.nodes()[n]["cur_cost"])
+        truecost += plang.nodes()[n]["true_cost"]
 
         if len(n) == 1:
             xls.append(nodes_xs[ni]-0.5)
@@ -180,6 +196,8 @@ def update_query_plan(data, G, controldata):
                                     # Alphas = alphas,
                                     )
     data["edges_source"].data = get_qp_edges_specs(plang, pos)
+    data["plancost"].text = PLAN_COST_FMT.format(CPlan = millify(truecost),
+                                                 OptPlan = millify(plang.graph["opt_pathcost"]))
 
     update_qp_color_bar(data)
 
@@ -252,7 +270,23 @@ def init_cost_model_query_plan(G):
     p.ygrid.grid_line_color = None
     # p1.outline_line_color = None
 
+    div = Div(text=PLAN_COST_FMT,
+            width=200, height=100)
+
+    plancost = Label(x=0, y=p1_height, x_units='screen', y_units='screen',
+                 text=PLAN_COST_FMT,
+                 render_mode='css',
+                 border_line_color=None, border_line_alpha=0.0,
+                 # background_fill_color='white',
+                 background_fill_alpha=0.0)
+
+    p.add_layout(plancost)
+
     data["figure"] = p
     data["nodes_source"] = nodes_source
     data["edges_source"] = edges_source
+    data["plancost"] = plancost
+
+    # data["div"] = div
+
     return data

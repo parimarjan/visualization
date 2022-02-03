@@ -15,7 +15,9 @@ from bokeh.events import Tap
 
 from utils import *
 from plangraph_utils import *
+from pgplan_utils import *
 from queryplan_utils import *
+from joingraph_utils import *
 
 def get_flow_specs(_G, _layout):
     d = dict(xs=[], ys=[], flow=[])
@@ -35,18 +37,31 @@ def get_flow_specs(_G, _layout):
     return d
 
 def get_edges_specs(_G, _layout):
-    d = dict(xs=[], ys=[], join=[], updated_cost=[], EdgeWidth=[])
+    d = dict(xs=[], ys=[], join=[], updated_cost=[], EdgeWidth=[],
+            TrueCost=[],EstCost=[],TrueFlow=[],EstFlow=[],
+            Join=[]
+            )
 
     if cbox_cards_to_use.active == 0:
         cost_key = COST_MODEL + COST_KEY
     elif cbox_cards_to_use.active == 1:
         cost_key = COST_MODEL + TRUE_COST_KEY
 
+    tckey = COST_MODEL + TRUE_COST_KEY
+    eckey = COST_MODEL + COST_KEY
+    efkey = COST_KEY + "flow"
+    tfkey = TRUE_COST_KEY + "flow"
+
     for u, v, data in _G.edges(data=True):
         d['xs'].append([_layout[u][0], _layout[v][0]])
         d['ys'].append([_layout[u][1], _layout[v][1]])
         d["join"].append("Join")
         d["updated_cost"].append(data[cost_key])
+        d["TrueCost"].append(millify(data[tckey]))
+        d["EstCost"].append(millify(data[eckey]))
+        d["TrueFlow"].append(data[tfkey])
+        d["EstFlow"].append(data[tfkey])
+        d["Join"].append(get_join_disp(u,v))
 
         # selecting width based on the estimated shortest path
         if _G.nodes()[u][COST_MODEL + COST_KEY + "-shortest_path"] \
@@ -57,22 +72,22 @@ def get_edges_specs(_G, _layout):
 
     return d
 
-def calc_sel_data():
-    selxs = []
-    selys = []
-    selsizes = []
+# def calc_sel_data():
+    # selxs = []
+    # selys = []
+    # selsizes = []
 
-    for ni, node in enumerate(ordered_nodes):
-        if G.nodes()[node]["Subplan"] != SEL_NODE_LABEL:
-            continue
-        selxs.append(nodes_xs[ni])
-        selys.append(nodes_ys[ni])
-        nodesize = nodes_source.data["NodeSize"][ni] + 6.0
-        selsizes.append(nodesize)
+    # for ni, node in enumerate(ordered_nodes):
+        # if G.nodes()[node]["Subplan"] != SEL_NODE_LABEL:
+            # continue
+        # selxs.append(nodes_xs[ni])
+        # selys.append(nodes_ys[ni])
+        # nodesize = nodes_source.data["NodeSize"][ni] + 6.0
+        # selsizes.append(nodesize)
 
-    sel_source.data = dict(x=selxs, y=selys, nodes=["selected"],
-                                NodeSize=selsizes
-                                )
+    # sel_source.data = dict(x=selxs, y=selys, nodes=["selected"],
+                                # NodeSize=selsizes
+                                # )
 
 def update():
     G = update_plangraph_properties()
@@ -90,7 +105,7 @@ def update_node_highlight(event):
 def update_query(attr, old, new):
     global qrep, G, splan_multiples,layout,ordered_nodes,\
             nodes_coordinates,nodes_xs,nodes_ys,labels_to_nodes,\
-            SEL_NODE_LABEL,nodedict
+            SEL_NODE_LABEL,nodedict,joing
 
     curq = qselector.value
     print("update query: ", curq)
@@ -100,6 +115,7 @@ def update_query(attr, old, new):
 
     # G will be global
     G = qrep["subset_graph"]
+    joing = qrep["join_graph"]
     if SOURCE_NODE in G.nodes():
         G.remove_node(SOURCE_NODE)
 
@@ -128,8 +144,9 @@ def update_query(attr, old, new):
 
     nodedict = defaultdict(list)
     for node in ordered_nodes:
-        nodedict["Subplan"].append(G.nodes()[node]["Subplan"])
-        nodedict["TrueSize"].append(G.nodes()[node]["TrueSize"])
+        # nodedict["Subplan"].append(get_subplan(G.nodes()[node]["Subplan"]))
+        nodedict["Subplan"].append(get_subplan_display(G, node))
+        nodedict["TrueSize"].append(millify(G.nodes()[node]["TrueSize"]))
 
     update()
 
@@ -144,6 +161,8 @@ def update_query(attr, old, new):
     sql = sql.replace("\n", "<br>")
     sql = sql.replace(" ", "&nbsp;")
     sqltext.text = sql
+
+    update_joingraph(joing_data, joing, controldata)
 
 def update_color_bar():
     cms = p1.select(LinearColorMapper)
@@ -182,8 +201,6 @@ def update_selected(attr, old, new):
     SEL_NODE_LABEL = nodeselector.value
     if SEL_NODE_LABEL == "":
         return
-
-    # calc_sel_data()
 
     # TODO: update the slider based on it too
     sel_node = labels_to_nodes[SEL_NODE_LABEL]
@@ -283,10 +300,12 @@ def update_plangraph_properties():
 
     tcostkey = COST_MODEL + TRUE_COST_KEY
     need_true_costs = True
-    for edge in curG.edges():
-        if tcostkey in curG.edges()[edge]:
-            need_true_costs = False
-            break
+
+    # for edge in curG.edges():
+        # if tcostkey in curG.edges()[edge]:
+            # need_true_costs = False
+            # # print(curG.graph)
+            # break
 
     for node in ordered_nodes:
         s = splan_multiples[node]
@@ -344,11 +363,13 @@ def update_plangraph_properties():
         # curG.nodes()[node]["NodeSize"] = sizes[ni]
         # curG.nodes()[node]["CurEst"] = ests[ni]
 
+    eststrings = [millify(e) for e in ests]
     # this is responsible for updating the displayed plangraph graph
     nodes_source.data = dict(x=nodes_xs, y=nodes_ys, nodes=ordered_nodes,
                                     Subplan=nodedict["Subplan"],
                                     TrueSize=nodedict["TrueSize"],
-                                    EstimatedSize=ests,
+                                    # EstimatedSize=ests,
+                                    EstimatedSize=eststrings,
                                     LineWidth=outwidths,
                                     LineColor=outlinecols,
                                     NodeColor=node_colors,
@@ -358,12 +379,12 @@ def update_plangraph_properties():
     cost_edges_source.data = get_edges_specs(curG, layout)
     flow_edges_source.data = get_flow_specs(curG, layout)
 
-
     return curG
 
 ## state of the query being displayed
 qrep = None
 G = None
+joing = None
 splan_multiples = {}
 # only needs to be done once
 layout = None
@@ -422,27 +443,16 @@ cost_edges_source = ColumnDataSource(dict(xs=[], ys=[], join=[],
 flow_edges_source = ColumnDataSource(dict(xs=[], ys=[],
                         flow=[]))
 
-## info text
-p2 = figure(title='',
-        height=600,
-        width=info_width,
-        toolbar_location=None)
-
-p2.axis.visible = False
-p2.xgrid.grid_line_color = None
-p2.ygrid.grid_line_color = None
-p2.outline_line_color = None
-
-# sqltext = Paragraph(text = "", width = 300,
-        # height_policy = "auto", style =
-        # {'fontsize': '10pt', 'color': 'black', 'font-family': 'arial'})
 
 sqltext = Div(text="",
         style={'font-size': '12pt', 'color': 'black'},
         width=info_width)
+joing_data = init_joingraph()
 
 tab_info1 = Panel(child=sqltext, title="SQL")
-tab_info2 = Panel(child=p2, title="Join Graph")
+
+tab_info2 = Panel(child=joing_data["figure"], title="Join Graph")
+
 info_tabs = Tabs(tabs=[tab_info1, tab_info2])
 
 ## actual bokeh plotting
@@ -464,6 +474,7 @@ nodeselector.on_change('value', update_selected)
 ## every time G is updated / cards are updated, we want to find the new path
 ## query plan graph things
 qp_data = init_cost_model_query_plan(G)
+pq_data = init_pg_query_plan(G)
 
 update_dataset(None, None, None)
 
@@ -493,7 +504,9 @@ color_mapper = LinearColorMapper(palette=get_plangraph_cost_palette(),
 cost_edges_lines = p1.multi_line('xs', 'ys',
                           line_width='EdgeWidth',
                           color={'field': "updated_cost", 'transform': color_mapper},
+                          alpha=0.5,
                           source=cost_edges_source)
+
 color_mapper2 = LinearColorMapper(palette=get_flow_palette(),
                                       low = min(flow_edges_source.data["flow"]),
                                       high= max(flow_edges_source.data["flow"]))
@@ -518,17 +531,24 @@ color_bar2.visible = False
 p1.add_layout(color_bar, 'below')
 p1.add_layout(color_bar2, 'left')
 
-node_hov = HoverTool(tooltips=[("Subplan", "@Subplan"), ("True Size", "@TrueSize"),
-                           ("Estimated Size", "@EstimatedSize")
-                           ],
-                           renderers=[r_circles], anchor="center",
-                           attachment="above",
-                           )
+node_hov = HoverTool(tooltips=PlanGraphNodeToolTip,
+						   renderers=[r_circles], anchor="center",
+						   attachment="above")
 
-edge_hov = HoverTool(tooltips=[("Join", "@join")],
+# node_hov = HoverTool(tooltips=[("Subplan", "@Subplan"), ("True Size", "@TrueSize"),
+                           # ("Estimated Size", "@EstimatedSize")
+                           # ],
+                           # renderers=[r_circles], anchor="center",
+                           # attachment="above",
+                           # )
+
+edge_hov = HoverTool(tooltips=PlanGraphEdgeToolTip,
                            renderers=[cost_edges_lines], anchor="center",
-                           attachment = "right",
-                           )
+                           attachment = "right")
+# edge_hov = HoverTool(tooltips=[("True Cost", "@TrueCost")],
+                           # renderers=[cost_edges_lines], anchor="center",
+                           # attachment = "right",
+                           # )
 p1.add_tools(node_hov)
 p1.add_tools(edge_hov)
 
@@ -548,7 +568,9 @@ dummy = RadioButtonGroup(labels=[])
 tab1 = Panel(child=p1, title="Plan Graph")
 
 tab2 = Panel(child=qp_data["figure"], title="Query Plan")
-tabs = Tabs(tabs=[tab1, tab2])
+tab3 = Panel(child=pq_data["figure"], title="PostgreSQL Query Plan")
+
+tabs = Tabs(tabs=[tab1, tab2, tab3])
 
 l = row(column(dselector, qselector, cmselector, info_tabs),
     column(
